@@ -8,9 +8,9 @@
 # * releated to it, including their occurences
 #
 #Base variables
-cyan = "\033[1;36m"; reset = "\033[0;0m"; IMG = 0; Q = 1; A = 2
+cyan = ""; reset = ""; IMG = 0; Q = 1; A = 2
 #Mode configuration
-mode = 1; showImages = True; showAnwsers = True; showQuestions = True; printDataResults = False; demo = 1
+mode = 1; showImages = True; showAnwsers = True; showQuestions = True; printDataResults = True; demo = 0
 #Imported libraries
 import nltk, re
 print("\n__________________________________________________\n")
@@ -277,7 +277,7 @@ def similarity_WindowNormalizer(tokenizedSentences,windowsMatch):
 def main(): 
     global showImages, showQuestions, showAnwsers, mode
 
-    path = "VQA-Training/QAPairsByCategory/"
+    path = "Training/QAPairsByCategory/"
     #files = [path + "C1_Modality_train.txt"]
     files = [path + "C1_Modality_train.txt",path + "C2_Plane_train.txt",path + "C3_Organ_train.txt",path + "C4_Abnormality_train.txt"]
     #print (fileNames)
