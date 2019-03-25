@@ -8,11 +8,11 @@
 # * releated to it, including their occurences
 #
 #Base variables
-cyan = "\033[1;36m"; reset = "\033[0;0m"; IMG = 0; Q = 1; A = 2
+cyan = "\033[1;36m"; blue = "\033[0;36m"; reset = "\033[0;0m"; IMG = 0; Q = 1; A = 2
 #Mode configuration
 mode = 1; showImages = True; showAnwsers = True; showQuestions = True; printDataResults = False; demo = 1
 #Imported libraries
-import nltk, re
+import nltk, re, gensim, collections
 print("\n__________________________________________________\n")
 #The class for global variables which hold the resulted data
 class subList:
@@ -158,6 +158,7 @@ def postProcessSizes():
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
 def printByImage():
+     print("Different Images:",len(gImages.byImage))
      for i in range(0,len(gImages.byImage),1):
         print(cyan, "Image: ", reset, "Times: ", gImages.byImage[i][0])
         if showImages:
@@ -172,7 +173,7 @@ def printByImage():
                 print(gAnswers.byImage[i][j])
         print("\n")
 def printByQuestion():
-    print(len(gQuestions.byQuestion))
+    print("Different questions:",len(gQuestions.byQuestion))
     for i in range(0,len(gQuestions.byQuestion),1):
         print(cyan ,"Question:", reset, "Times: ",gQuestions.byQuestion[i][0])
         if showQuestions:
@@ -187,6 +188,7 @@ def printByQuestion():
                 print(gImages.byQuestion[i][j])
         print("\n")
 def printByAnswer():
+    print("Different Answers:",len(gAnswers.byAnswer))
     for i in range(0,len(gAnswers.byAnswer),1):
         print(cyan, "Answer: ", reset, "Times: ", gAnswers.byAnswer[i][0])
         if showAnwsers:
@@ -206,15 +208,15 @@ def printByAnswer():
 # * * * * * * * * * * * * NLTK functions * * * * * * * * * * * 
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
-def stringNormalizer(text):
+def NLTK_stringNormalizer(text):
     return ' '.join(re.sub(r'[^a-zA-Z0-9\s]+', '', text).split()).lower()
 
-def textNormalizer(text):
+def NLTK_textNormalizer(text):
     for i in range(0,len(text),1):
-        text[i] = stringNormalizer(text[i])
+        text[i] = NLTK_stringNormalizer(text[i])
     return text
 
-def sentencesTokenizer(sentences): # Creates tokens from a sentence
+def NLTK_sentencesTokenizer(sentences): # Creates tokens from a sentence
     # Can be done either with splitting by word, or by using stop words
     # Make empty list holder for the tokens of each sentence
     sentencesTokenized = ['' for i in range(0,len(sentences))]
@@ -223,6 +225,16 @@ def sentencesTokenizer(sentences): # Creates tokens from a sentence
         sentencesTokenized[i] = nltk.tokenize.word_tokenize(sentences[i])
     return sentencesTokenized
 
+def NLTK_removeStopWords(sentencesTokenized,banList):
+    #
+    stopwords = nltk.corpus.stopwords.words('english')
+    stopwords.extend(banList)
+    sentencesNormalised = []
+    for sentence in sentencesTokenized:
+        sentencesNormalised.append([word for word in sentence if not word in stopwords])
+    return sentencesNormalised
+
+
 def tokenStemmer(tokenizedSentences): #Uses NLTK to stem words, either with Porter or Lancaster (agressive)
     #Must take a list of lists of strings as an argument
     # Stem the tokens of the list of lists
@@ -230,6 +242,66 @@ def tokenStemmer(tokenizedSentences): #Uses NLTK to stem words, either with Port
         for j in range(0,len(tokenizedSentences[i])):
             tokenizedSentences[i][j] =  nltk.stem.PorterStemmer().stem(tokenizedSentences[i][j])
     return tokenizedSentences
+
+def NLTK_tokenLemmatizer(tokenizedSentences): #Uses NLTK to stem words, either with Porter or Lancaster (agressive)
+    #Must take a list of lists of strings as an argument
+    # Stem the tokens of the list of lists
+    for i in range(0,len(tokenizedSentences)):
+        for j in range(0,len(tokenizedSentences[i])):
+            tokenizedSentences[i][j] =  nltk.stem.WordNetLemmatizer().lemmatize(tokenizedSentences[i][j])
+    return tokenizedSentences
+
+def NLTK_makeWordDictionary(sentencesTokenized):
+    #Make a dictionary for the words
+    definitions = {}
+
+    for sentence in sentencesTokenized:
+        sentenceDef = {}
+        for word in sentence:
+            if word not in definitions:
+                try:
+                    wordNet = nltk.corpus.wordnet.synsets(word)
+                    defs = []
+                    for syn in wordNet:
+                        defs.append(syn.definition())
+                except: defs = [word]
+                if len(defs) == 0: defs = [word]
+                sentenceDef.update({word:defs})
+        definitions.update(sentenceDef)
+    return definitions
+
+def NLTK_similarityCalculator(sentencesTokenized,definitions):
+    #Calculate the number of similar words between sentences
+    sentenceMatches = []
+    for sentence1 in sentencesTokenized:
+        for sentence2 in sentencesTokenized:
+            matches = 0
+            for word1 in sentence1:
+                match = 0
+                for word2 in sentence2:
+                    for definition1 in definitions[word1]:
+                        for definition2 in definitions[word2]:
+                            if definition1 == definition2:
+                                match = 1
+                matches += match
+            sentenceMatches.extend([matches])
+    return sentenceMatches
+
+def NLTK_similarityNormalizer(sentencesTokenized,sentenceMatches):
+    # Normalize the similarity between sentences
+    score = []
+    pos = 0
+    for sentence1 in sentencesTokenized:
+        for sentence2 in sentencesTokenized:
+            similarity = 0
+            if sentenceMatches[pos] != 0:
+                if len(sentence1) <= len(sentence2):
+                    similarity = sentenceMatches[pos] / len(sentence2)
+                else:
+                    similarity = sentenceMatches[pos] / len(sentence1)
+            score.extend([similarity])
+            pos += 1
+    return score
 
 def sentence_SimilarityWindow(tokenizedSentences): # Returns the number of windows matches in a list of lists of sentences
     #Must take as an argument a list of lists of strings
@@ -269,7 +341,102 @@ def similarity_WindowNormalizer(tokenizedSentences,windowsMatch):
             score.extend([similarity])
             pos += 1
     return score
+def gsim_getScore(sentencesTokenized):
+    score = []
+    dictionary = gensim.corpora.Dictionary(sentencesTokenized)
+    corpus = [dictionary.doc2bow(sentence) for sentence in sentencesTokenized]
+    lsi = gensim.models.LsiModel(corpus, id2word=dictionary, num_topics=2)
+    index = gensim.similarities.MatrixSimilarity(lsi[corpus])
+    for sentence in sentencesTokenized:
+        vec_bow = dictionary.doc2bow(sentence)
+        # convert the query to LSI space
+        vec_lsi = lsi[vec_bow]
+        # perform a similarity query against the corpus
+        similarities = index[vec_lsi]
+        score.extend(similarities)
+    return score
+def windowSmilarityMethod(sentences):    
+    # Tokenize the sentences and remove extra data from them
+    sentencesTokenized = tokenStemmer(NLTK_sentencesTokenizer(sentences))
+    
+    # Find all the matches from the data
+    sentencesMatches = sentence_SimilarityWindow(sentencesTokenized)
+    
+    # Normalize the score in %
+    score = similarity_WindowNormalizer(sentencesTokenized,sentencesMatches)
 
+    # Print results
+    pos = 0
+    for i in range(0,len(sentencesTokenized)):
+        print()
+        print(cyan,sentences[i],reset,">>",blue,sentencesTokenized[i],reset)
+        for j in range(0,len(sentencesTokenized)):
+            if score[pos] > 0.8:
+                print("matches:", cyan, sentencesMatches[pos], reset," score:",cyan, "%.2f" % score[pos], reset," >> '",sentences[j],"' >> ", blue, sentencesTokenized[j],reset )
+            pos +=1
+    
+def tokenSimilarityMethod(sentences): 
+    # Add extra stop words to remove
+    banList = ["im","Im"]
+    
+    # Tokenize the sentences and remove extra data from them
+    sentencesTokenized = NLTK_tokenLemmatizer(NLTK_removeStopWords(NLTK_sentencesTokenizer(sentences),banList))
+    
+    # Build a dictionary from all the sentences
+    definitions = NLTK_makeWordDictionary(sentencesTokenized)
+    
+    # Add extra synonims for analysis
+    extraDefinitions = {"kind":["type"],"scan":["image"],"contrast":["noncontrast"],"t1":["t2","t3","t4","flair"],
+        "t2":["t1","t3","t4","flair"],"t3":["t1","t2","t4","flair"],"t4":["t2","t3","t1","flair"],"flair":["t2","t3","t1","t4"],
+        "captured":["taken"]
+    }
+    #definitions.update(extraDefinitions)
+    # Find all the matches from the data
+    sentencesMatches = NLTK_similarityCalculator(sentencesTokenized,definitions)
+    
+
+    # Normalize the score in %
+    score = NLTK_similarityNormalizer(sentencesTokenized,sentencesMatches)
+
+    # Print results
+    pos = 0
+    for i in range(0,len(sentencesTokenized)):
+        print()
+        print(cyan,sentences[i],reset,">>",blue,sentencesTokenized[i],reset)
+        for j in range(0,len(sentencesTokenized)):
+            if score[pos] > 0.8:
+                print("matches:", cyan, sentencesMatches[pos], reset," score:",cyan, "%.2f" % score[pos], reset," >> '",sentences[j],"' >> ", blue, sentencesTokenized[j],reset )
+            pos +=1
+    
+def gsimSimilarityMethod(sentences): 
+    # Add extra stop words to remove
+    banList = ["im","Im"]
+    
+    # Tokenize the sentences and remove extra data from them
+    sentencesTokenized = NLTK_tokenLemmatizer(NLTK_removeStopWords(NLTK_sentencesTokenizer(sentences),banList))
+    
+    # Build a dictionary from all the sentences
+    definitions = NLTK_makeWordDictionary(sentencesTokenized)
+    
+    # Add extra synonims for analysis
+    extraDefinitions = {"kind":["type"],"scan":["image"],"contrast":["noncontrast"],"t1":["t2","t3","t4","flair"],
+        "t2":["t1","t3","t4","flair"],"t3":["t1","t2","t4","flair"],"t4":["t2","t3","t1","flair"],"flair":["t2","t3","t1","t4"],
+        "captured":["taken"]
+    }
+    #definitions.update(extraDefinitions)
+    # Get the score in %
+    score = gsim_getScore(sentencesTokenized)
+    
+    # Print results
+    pos = 0
+    for i in range(0,len(sentencesTokenized)):
+        print()
+        print(cyan,sentences[i],reset,">>",blue,sentencesTokenized[i],reset)
+        for j in range(0,len(sentencesTokenized)):
+            if score[pos] > 0.8:
+                print(" score:",cyan, "%.2f" % score[pos], reset," >> '",sentences[j],"' >> ", blue, sentencesTokenized[j],reset )
+            pos +=1
+    
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 # * * * * * * * * * Main section of the code * * * * * * * * *
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
@@ -277,18 +444,19 @@ def similarity_WindowNormalizer(tokenizedSentences,windowsMatch):
 def main(): 
     global showImages, showQuestions, showAnwsers, mode
 
-    path = "VQA-Training/QAPairsByCategory/"
+    path = "ImageClef-2019-VQA-Med-Training/QAPairsByCategory/"
     #files = [path + "C1_Modality_train.txt"]
     files = [path + "C1_Modality_train.txt",path + "C2_Plane_train.txt",path + "C3_Organ_train.txt",path + "C4_Abnormality_train.txt"]
+    
     #print (fileNames)
 
     # data = [id][Q][A]
-    data = loadData(files)
+    data = loadData([files[0]])
 
     print("Number of lines in file: ",len(data))
-    mode = 1
+    #mode = 1
     if mode == 1: #question perspective
-        showImages = False ; showQuestions = True ; showAnwsers = False
+        showImages = False ; showQuestions = True ; showAnwsers = True
         sortByQuestion(data)
         postProcessSizesByQuestion()
         if printDataResults: printByQuestion()
@@ -323,24 +491,17 @@ def main():
         "My sky is red"
         ]
 
+        # Put all the unique questions together to find similarities
         sentences = ['' for i in range(0,len(gQuestions.byQuestion))]
         for i in range(0,len(gQuestions.byQuestion)):
             sentences[i] =  gQuestions.byQuestion[i][1]
         
         # Normalize data
-        sentences = textNormalizer(sentences)
-        sentencesTokenized = tokenStemmer(sentencesTokenizer(sentences))
-        windowsMatch = sentence_SimilarityWindow(sentencesTokenized)
-        score = similarity_WindowNormalizer(sentencesTokenized,windowsMatch)
+        sentences = NLTK_textNormalizer(sentences)
 
-        pos = 0
-        for i in range(0,len(sentencesTokenized)):
-            print()
-            print(sentences[i])
-            for j in range(0,len(sentencesTokenized)):
-                if score[pos] > 0.6:
-                    print("matches: ", windowsMatch[pos]," score: %.2f" % score[pos], " >> '",sentences[j],"'", )
-                pos +=1
+        #windowSmilarityMethod(sentences)
+        #tokenSimilarityMethod(sentences)
+        gsimSimilarityMethod(sentences)
 
 if __name__ == "__main__":
     main()
